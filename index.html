@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AA - AykolinoApps - Article number generator</title>
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- SheetJS/xlsx library for Excel file handling -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .drop-zone-active {
+            border-color: #ec4899; /* pink-500 */
+            background-color: #1f2937; /* slate-800 */
+        }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-300 flex items-center justify-center min-h-screen p-4">
+
+    <div class="w-full max-w-2xl mx-auto">
+        <div class="bg-slate-800 rounded-xl shadow-2xl p-6 sm:p-8 border border-slate-700">
+            <div class="text-center mb-8">
+                <h1 class="text-3xl sm:text-4xl font-bold text-white">Article Number Generator</h1>
+                <p class="text-slate-400 mt-2">Ziehen Sie Ihre Excel-Datei hierher, um eine "Final No."-Spalte hinzuzufügen.</p>
+            </div>
+
+            <!-- Drag and Drop Area -->
+            <div id="drop-zone" class="border-2 border-dashed border-slate-600 rounded-lg p-8 sm:p-12 text-center cursor-pointer transition-all duration-300 hover:border-pink-500 hover:bg-slate-700/50">
+                <input type="file" id="file-input" class="hidden" accept=".xlsx, .xls, .csv">
+                <div class="flex flex-col items-center text-slate-400">
+                    <i class="fas fa-file-excel fa-3x mb-4 text-slate-500"></i>
+                    <p class="font-semibold text-lg">Datei hierher ziehen oder klicken zum Auswählen</p>
+                    <p class="text-sm">Unterstützte Formate: .xlsx, .xls, .csv</p>
+                </div>
+            </div>
+
+            <!-- Status and Download Section -->
+            <div id="status-container" class="mt-6 text-center hidden">
+                <p id="status-message" class="text-lg text-slate-300"></p>
+                <button id="download-btn" class="mt-4 bg-pink-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-pink-700 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg flex items-center justify-center mx-auto" disabled>
+                    <i class="fas fa-download mr-2"></i>
+                    <span>Fertige Datei herunterladen</span>
+                </button>
+            </div>
+            
+        </div>
+        <footer class="mt-6 text-slate-500 text-sm flex justify-between items-center px-2">
+            <div>Version 1.01</div>
+            <div>©AykolinoApps</div>
+        </footer>
+    </div>
+
+    <script>
+        const dropZone = document.getElementById('drop-zone');
+        const fileInput = document.getElementById('file-input');
+        const statusContainer = document.getElementById('status-container');
+        const statusMessage = document.getElementById('status-message');
+        const downloadBtn = document.getElementById('download-btn');
+
+        let processedData = null; // To store the final data for download
+
+        // --- Event Listeners ---
+        
+        // Open file selector when drop zone is clicked
+        dropZone.addEventListener('click', () => fileInput.click());
+
+        // Handle file selection from input
+        fileInput.addEventListener('change', (e) => {
+            const files = e.target.files;
+            if (files.length > 0) {
+                handleFile(files[0]);
+            }
+        });
+        
+        // Drag and drop events
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            dropZone.classList.add('drop-zone-active');
+        });
+
+        dropZone.addEventListener('dragleave', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            dropZone.classList.remove('drop-zone-active');
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            dropZone.classList.remove('drop-zone-active');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                handleFile(files[0]);
+            }
+        });
+        
+        // Download button click
+        downloadBtn.addEventListener('click', () => {
+            if (!processedData) {
+                updateStatus('Fehler: Keine Daten zum Herunterladen verfügbar.', 'error');
+                return;
+            }
+            // Create a new workbook
+            const newWorkbook = XLSX.utils.book_new();
+            // Convert the array of arrays back to a worksheet
+            const newWorksheet = XLSX.utils.aoa_to_sheet(processedData);
+            // Append the worksheet to the workbook
+            XLSX.utils.book_append_sheet(newWorkbook, newWorksheet, 'Final Numbers');
+            // Write the workbook and trigger download
+            XLSX.writeFile(newWorkbook, 'finished_list.xlsx');
+        });
+
+        // --- Core Functions ---
+
+        function handleFile(file) {
+            resetUI();
+            statusContainer.classList.remove('hidden');
+            updateStatus('Lese Datei...', 'loading');
+            
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const data = e.target.result;
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const firstSheetName = workbook.SheetNames[0];
+                    const worksheet = workbook.Sheets[firstSheetName];
+                    
+                    // Convert sheet to array of arrays to preserve column order
+                    const aoa = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+                    
+                    processData(aoa);
+
+                } catch (error) {
+                    console.error("Fehler bei der Dateiverarbeitung:", error);
+                    updateStatus('Fehler: Die Datei konnte nicht verarbeitet werden. Ist es eine gültige Excel-Datei?', 'error');
+                }
+            };
+            reader.onerror = () => {
+                 updateStatus('Fehler beim Lesen der Datei.', 'error');
+            }
+            reader.readAsArrayBuffer(file);
+        }
+
+        function processData(data) {
+            updateStatus('Verarbeite Daten...', 'loading');
+            if (data.length === 0) {
+                updateStatus('Fehler: Die Excel-Datei ist leer.', 'error');
+                return;
+            }
+
+            // Treat the first row as headers, but use fixed column indices for data processing.
+            const headers = data[0];
+
+            // Validate that there are at least 4 columns (A, B, C, D)
+            if (headers.length < 4) {
+                 updateStatus('Fehler: Die Datei muss mindestens 4 Spalten haben (ItemID, Style, Color, Size).', 'error');
+                 return;
+            }
+            
+            // Use fixed indices as requested: A=0, B=1, C=2, D=3
+            const itemIdIndex = 0;
+            const stilIndex = 1;
+            const farbeIndex = 2;
+            const grosseIndex = 3;
+            
+            // --- Logic for adding the new column ---
+
+            // 1. Add new header 'Final Nr.' at position E (index 4)
+            const insertAtIndex = 4;
+            const newHeaders = [...headers];
+            newHeaders.splice(insertAtIndex, 0, 'Final Nr.');
+            
+            // 2. Process each data row (assuming data starts from the second row)
+            const dataRows = data.length > 1 ? data.slice(1) : [];
+            const newData = dataRows.map(row => {
+                const itemId = row[itemIdIndex] || '';
+                const stil = row[stilIndex] || '';
+                const farbe = row[farbeIndex] || '';
+                const grosse = row[grosseIndex] || '';
+                
+                // Build the final number part by part
+                let finalNrParts = [];
+                if (itemId !== null && itemId !== undefined && String(itemId).trim() !== '') {
+                    finalNrParts.push(String(itemId).trim());
+                }
+                if (stil !== null && stil !== undefined && String(stil).trim() !== '') {
+                    finalNrParts.push(String(stil).trim());
+                }
+
+                const hasFarbe = farbe !== null && farbe !== undefined && String(farbe).trim() !== '';
+                const hasGrosse = grosse !== null && grosse !== undefined && String(grosse).trim() !== '';
+
+                // Add color and/or size if they exist
+                if (hasFarbe) {
+                    finalNrParts.push(String(farbe).trim());
+                }
+                if (hasGrosse) {
+                    finalNrParts.push(String(grosse).trim());
+                }
+                
+                // Join all available parts with a hyphen
+                const finalNr = finalNrParts.join('-');
+
+                // Create a copy to avoid modifying the original row during iteration
+                const newRow = [...row];
+                newRow.splice(insertAtIndex, 0, finalNr);
+                return newRow;
+            });
+            
+            // 3. Combine header with new data
+            processedData = [newHeaders, ...newData];
+
+            updateStatus('Verarbeitung erfolgreich! Datei ist zum Download bereit.', 'success');
+            downloadBtn.disabled = false;
+            
+        }
+
+        function updateStatus(message, type) {
+            statusMessage.textContent = message;
+            statusMessage.className = 'text-lg '; // Reset classes
+            switch (type) {
+                case 'error':
+                    statusMessage.classList.add('text-red-400');
+                    break;
+                case 'success':
+                    statusMessage.classList.add('text-green-400');
+                    break;
+                case 'loading':
+                default:
+                    statusMessage.classList.add('text-blue-400');
+                    break;
+            }
+        }
+        
+        function resetUI() {
+            downloadBtn.disabled = true;
+            processedData = null;
+            statusContainer.classList.add('hidden');
+            fileInput.value = ''; // Reset file input
+        }
+ // Marquee Title Effect
+        (function() {
+            const originalTitle = document.title + " ";
+            let titleText = originalTitle;
+            function marquee() {
+                titleText = titleText.substring(1, titleText.length) + titleText.substring(0, 1);
+                document.title = titleText;
+            }
+            setInterval(marquee, 300); // Speed in milliseconds
+        })();
+    </script>
+
+</body>
+</html>
